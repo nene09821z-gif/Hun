@@ -30,6 +30,16 @@ jobs:
         with:
           gradle-version: 8.9
 
+      - name: Unzip project (neu repo chi co file zip)
+        run: |
+          if [ -z "$(find . -name settings.gradle.kts | head -n1)" ]; then
+            Z=$(ls NenArena*.zip 2>/dev/null | sort -V | tail -n1)
+            if [ -n "$Z" ]; then
+              echo "Giai nen $Z"
+              unzip -q -o "$Z" -d project
+            fi
+          fi
+
       - name: Find project folder
         id: find
         run: |
