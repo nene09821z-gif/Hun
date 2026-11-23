@@ -14,35 +14,35 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
 
-      # Đảm bảo có three.js trong assets (game chạy offline). Nếu thiếu/hỏng thì tự tải lại.
-      - name: Ensure three.js is bundled
+      - name: Prepare assets (three.js)
         run: |
-          F=app/src/main/assets/three.min.js
-          if [ ! -s "$F" ] || [ "$(wc -c < "$F")" -lt 100000 ]; then
-            echo "three.min.js missing -> downloading r149"
-            curl -fsSL https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js -o "$F" \
-              || curl -fsSL https://unpkg.com/three@0.149.0/build/three.min.js -o "$F"
+          D=app/src/main/assets
+          mkdir -p "$D"
+          if [ ! -s "$D/index.html" ]; then
+            echo "::error::Thiếu file $D/index.html"
+            exit 1
           fi
-          ls -la app/src/main/assets
-          grep -q 'three.min.js' app/src/main/assets/index.html
+          F="$D/three.min.js"
+          if [ ! -s "$F" ] || [ "$(wc -c < "$F")" -lt 100000 ]; then
+            curl -fsSL --retry 3 https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js -o "$F" \
+              || curl -fsSL --retry 3 https://unpkg.com/three@0.149.0/build/three.min.js -o "$F"
+          fi
+          sed -i 's#https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js#three.min.js#' "$D/index.html"
+          ls -la "$D"
+          grep -n 'three.min.js' "$D/index.html"
 
-      # Keystore debug để ký APK release (cài được ngay, không cần keystore riêng)
       - name: Create debug keystore
         run: |
           mkdir -p ~/.android
@@ -53,7 +53,7 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build APK (debug + release)
+      - name: Build APK
         run: gradle assembleDebug assembleRelease --stacktrace --no-daemon
 
       - name: Collect APKs
@@ -61,15 +61,13 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/NenArena-debug.apk
           cp app/build/outputs/apk/release/app-release.apk dist/NenArena-release.apk
-          ls -la dist
 
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: NenArena-APK
           path: dist/*.apk
 
-      - name: Publish GitHub Release (khi push tag v*)
+      - name: Publish Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
